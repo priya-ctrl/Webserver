@@ -7,13 +7,27 @@ import com.sun.net.httpserver.HttpServer;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.math.BigInteger;
 import java.net.InetSocketAddress;
+import java.util.Arrays;
+import java.util.concurrent.Executors;
 
 public class Webserver {
     private static final String TASK_ENDPOINT = "/task";
     private static final String STATUS_EXPERIMENT = "/status";
     private final int port;
     private HttpServer server;
+
+    public static void main(String[] args) {
+        int serverPort = 8080;
+        if( args.length ==1){
+            serverPort = Integer.parseInt(args[0]);
+        }
+        Webserver webserver = new Webserver(serverPort);
+        webserver.startServer();;
+
+        System.out.println("Server is listening on port : " +serverPort );
+    }
 
     public Webserver(int port){
         this.port = port;
@@ -27,8 +41,12 @@ public class Webserver {
             return;
         }
         HttpContext statusContext = server.createContext(STATUS_EXPERIMENT);
-        HttpContext taskConnect = server.createContext(TASK_ENDPOINT);
+        HttpContext taskContext = server.createContext(TASK_ENDPOINT);
         statusContext.setHandler(this::handleStatusCheckRequest);
+        taskContext.setHandler(this::handleTaskRequest);
+
+        server.setExecutor(Executors.newFixedThreadPool(8));
+        server.start();
     }
     private void handleTaskRequest(HttpExchange exchange) throws IOException{
         if(! exchange.getRequestMethod().equalsIgnoreCase("post")){
@@ -37,8 +55,37 @@ public class Webserver {
         }
     Headers headers = exchange.getRequestHeaders();
         if(headers.containsKey("X-Test") && headers.get("X-test").get(0).equalsIgnoreCase("true")){
-            
+        String dummyResponse ="123\n";
+        return;
         }
+        boolean isDebugMode = false;
+        if(headers.containsKey("X-Debug") && headers.get("X-Debug").get(0).equalsIgnoreCase("true")){
+            isDebugMode = true;
+        }
+        long startTime = System.nanoTime();
+        byte[] requestBytes = exchange.getRequestBody().readAllBytes();
+        byte[] responseBytes = calculateResponse(requestBytes);
+        long finishTime = System.nanoTime();
+
+        if(isDebugMode){
+            String debugMessage = String.format("Operation took d ns\n",finishTime - startTime);
+            exchange.getRequestHeaders().put("X-Debug-Info", Arrays.asList(debugMessage));
+        }
+        sendResponse(responseBytes, exchange);
+
+    }
+
+    private byte[] calculateResponse(byte[] requestBytes){
+        String bodyString = new String(requestBytes);
+        String [] stringNumbers = bodyString.split(",");
+
+        BigInteger result = BigInteger.ONE;
+
+        for(String number : stringNumbers){
+            BigInteger bigInteger = new BigInteger(number);
+            result = result.multiply(bigInteger);
+        }
+        return String.format("Result of the multiplication is s\n", result).getBytes();
     }
     private void handleStatusCheckRequest(HttpExchange exchange){
     if(!exchange.getRequestMethod().equalsIgnoreCase("get")){
